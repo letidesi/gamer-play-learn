@@ -24,7 +24,7 @@ class Game:
         self.state = "select_player_count"  # novo estado inicial
         self.letter_rects = []
 
-        self.themes = ["Lugar", "Objeto", "Animal", "Comida", "Profissão", "+ Novo Tema"]
+        self.themes = ["Lugar", "Objeto", "Animal", "Comida", "Profissão", "+ Criar nova categoria para a próxima rodada"]
         self.selected_theme_index = 0
         self.current_theme = None
         self.theme_rects = []
@@ -79,6 +79,11 @@ class Game:
             elif self.state == "roulette":
                 self.draw_roulette()
                 self.update_timer()
+            elif self.state == "letter_reveal":
+                self.draw_roulette()  # mostra a letra sorteada
+                if time.time() - self.reveal_start_time > 4:  # pode ser 2.5s ou o tempo que quiser
+                    self.timer_start = time.time()
+                    self.state = "answer_input"
             elif self.state == "answer_input":
                 self.draw_answer_input()
                 self.update_timer()
@@ -123,8 +128,9 @@ class Game:
                         self.input_boxes[self.current_input] = (
                             self.input_boxes[self.current_input][:-1]
                         )
-                    else:
+                    elif len(self.input_boxes[self.current_input]) < 6 and event.unicode.isprintable():
                         self.input_boxes[self.current_input] += event.unicode
+
 
             elif self.state == "choose_character":
                 if event.type == pygame.KEYDOWN:
@@ -169,7 +175,7 @@ class Game:
                         elif event.key == pygame.K_DOWN:
                             self.selected_theme_index = (self.selected_theme_index + 1) % len(self.themes)
                         elif event.key == pygame.K_RETURN:
-                            if self.themes[self.selected_theme_index] == "+ Novo Tema":
+                            if self.themes[self.selected_theme_index] == "+ Criar nova categoria para a próxima rodada":
                                 self.typing_custom_theme = True
                                 self.custom_theme_input = ""
                             else:
@@ -179,7 +185,7 @@ class Game:
                         mouse_pos = event.pos
                         for i, rect in enumerate(self.theme_rects):
                             if rect.collidepoint(mouse_pos):
-                                if self.themes[i] == "+ Novo Tema":
+                                if self.themes[i] == "+ Criar nova categoria para a próxima rodada":
                                     self.typing_custom_theme = True
                                     self.custom_theme_input = ""
                                 else:
@@ -205,6 +211,11 @@ class Game:
                                 self.current_letter_index = self.alphabet.index(letter)
                                 self.select_letter(letter)
                                 break
+            elif self.state == "letter_reveal":
+                self.draw_roulette()  # mesmo desenho
+                if time.time() - self.reveal_start_time > 5:  # espera 5 segundos
+                    self.timer_start = time.time()
+                    self.state = "answer_input"
 
             elif self.state == "answer_input":
                 if event.type == pygame.KEYDOWN:
@@ -244,8 +255,9 @@ class Game:
             self.used_letters.add(letter)
             self.current_letter = letter
             self.current_answer = ""
+            self.reveal_start_time = time.time()  # ← ESSA LINHA ADICIONADA
             self.timer_start = time.time()
-            self.state = "answer_input"
+            self.state = "letter_reveal"
             self.warning_played = False
             self.play_choice_sound()
 
@@ -283,7 +295,7 @@ class Game:
 
         prompt_font = pygame.font.SysFont("comicsansms", 28, bold=True)
         prompt_text = prompt_font.render(
-            f"{self.current_input + 1}º Jogador, digite seu nome:", True, (255, 255, 255)
+            f"{self.current_input + 1}º Jogador, digite seu apelido:", True, (255, 255, 255)
         )
         prompt_rect = prompt_text.get_rect(center=(config.SCREEN_WIDTH // 2, 180))
         self.screen.blit(prompt_text, prompt_rect)
@@ -315,7 +327,7 @@ class Game:
 
         title_font = pygame.font.SysFont("comicsansms", 42, bold=True)
         player_name = self.players[self.current_input]["name"]
-        title_text = f"{player_name}, escolha seu personagem"
+        title_text = f"{player_name}, Quem é o mestre das palavras?"
         title_surface = title_font.render(title_text, True, (255, 255, 255))
 
         title_rect = title_surface.get_rect()
@@ -362,72 +374,72 @@ class Game:
             self.screen.blit(text_surface, text_rect)
 
     def draw_theme_selection(self):
-        # Configura a fonte Comic Sans MS, tamanho 28
-        font_comics = pygame.font.SysFont("comicsansms", 28)
+        # Fonte padrão
+        font_comics = pygame.font.SysFont("comicsansms", 42)
 
-        # Dimensões e posição do painel no canto superior esquerdo
-        rect_x, rect_y = 20, 20
-        rect_w, rect_h = 300, 220
-        panel_color = (20, 20, 60)
+        # --- Fundo da pergunta centralizado no topo ---
+        question_rect_x, question_rect_y = 80, 40
+        question_rect_w, question_rect_h = 800, 60
+        pygame.draw.rect(self.screen, (20, 20, 60),
+                         (question_rect_x, question_rect_y, question_rect_w, question_rect_h), border_radius=10)
 
-        # Desenha retângulo arredondado como fundo do painel
-        pygame.draw.rect(self.screen, panel_color, (rect_x, rect_y, rect_w, rect_h), border_radius=10)
-
-        # Pega jogador atual e imagem do personagem selecionado
+        # --- Imagem do personagem no canto superior direito ---
         player = self.players[self.current_player_turn]
-        player_img = player["character"]  # já é a Surface, sem indexar
-
-        # Ajusta tamanho da imagem (se quiser)
+        player_img = player["character"]
         img_size = 64
         img_scaled = pygame.transform.scale(player_img, (img_size, img_size))
 
-        # Centraliza imagem horizontalmente dentro do painel
-        img_x = rect_x + (rect_w - img_size) // 2
-        img_y = rect_y + 20
-
+        img_x = self.screen.get_width() - img_size - 20  # 20 de margem da direita
+        img_y = 20  # margem superior
         self.screen.blit(img_scaled, (img_x, img_y))
 
-        # Escreve nome do jogador abaixo da imagem, centralizado
+        # Nome do jogador abaixo da imagem, centralizado abaixo da imagem
         name_text = font_comics.render(player["name"], True, (255, 255, 255))
-        name_rect = name_text.get_rect(center=(rect_x + rect_w // 2, img_y + img_size + 25))
+        name_rect = name_text.get_rect(center=(img_x + img_size // 2, img_y + img_size + 20))
         self.screen.blit(name_text, name_rect)
 
-        # Texto "escolha ou digite um tema" abaixo do nome, centralizado dentro do painel, com margem lateral
-        margin_x = 10  # margem para não encostar nas bordas
-        choose_text = font_comics.render("Escolha ou digite um tema:", True, (255, 255, 255))
-        choose_rect = choose_text.get_rect()
-        choose_rect.centerx = rect_x + rect_w // 2
-        choose_rect.top = name_rect.bottom + 25
-
-        # Ajusta se o texto ultrapassar as bordas do painel
-        if choose_rect.left < rect_x + margin_x:
-            choose_rect.left = rect_x + margin_x
-        if choose_rect.right > rect_x + rect_w - margin_x:
-            choose_rect.right = rect_x + rect_w - margin_x
-
+        # --- Texto "Escolha ou digite um tema" centralizado na tela ---
+        choose_text = font_comics.render("Qual categoria vamos detonar agora?", True, (255, 255, 255))
+        choose_rect = choose_text.get_rect(center=(self.screen.get_width() // 2, question_rect_y + 15))
         self.screen.blit(choose_text, choose_rect)
 
-        # Agora desenha a lista de temas ou input do lado direito do painel
-        right_x = rect_x + rect_w + 40  # espaçamento entre painel e lista
-        if self.typing_custom_theme:
-            # Input para digitar novo tema
-            input_prompt = font_comics.render("Digite o novo tema e pressione Enter:", True, (255, 255, 0))
-            self.screen.blit(input_prompt, (right_x, rect_y + 50))
+        # --- Área principal (meio da tela) ---
+        center_x = self.screen.get_width() // 2
+        base_y = 150  # começa a partir dessa altura
 
-            input_text = font_comics.render(self.custom_theme_input, True, (255, 255, 255))
-            input_rect = pygame.Rect(right_x, rect_y + 100, 400, 40)
-            pygame.draw.rect(self.screen, (50, 50, 50), input_rect)
-            pygame.draw.rect(self.screen, (255, 255, 0), input_rect, 2)
-            self.screen.blit(input_text, (input_rect.x + 10, input_rect.y + 5))
+        if self.typing_custom_theme:
+            # Mostra prompt e input centralizados
+            input_prompt = font_comics.render("Qual o desafio de hoje? Defina o tema!", True, (255, 255, 0))
+            prompt_rect = input_prompt.get_rect(center=(center_x, base_y))
+            self.screen.blit(input_prompt, prompt_rect)
+
+            input_text = font_comics.render(self.custom_theme_input or " ", True, (255, 255, 255))
+
+            # Define padding e altura fixa
+            padding_x = 20
+            min_width = 600
+            box_height = 60
+
+            # Largura baseada no texto, com mínimo
+            text_width = input_text.get_width()
+            box_width = max(min_width, text_width + padding_x * 2)
+
+            # Caixa centralizada
+            input_box_rect = pygame.Rect(0, 0, box_width, box_height)
+            input_box_rect.center = (center_x, base_y + 60)
+
+            pygame.draw.rect(self.screen, (50, 50, 50), input_box_rect)
+            pygame.draw.rect(self.screen, (255, 255, 0), input_box_rect, 2)
+            self.screen.blit(input_text, (input_box_rect.x + 10, input_box_rect.y + 5))
         else:
-            # Lista de temas para selecionar
+            # Lista de temas centralizada
             self.theme_rects = []
             for i, theme in enumerate(self.themes):
                 color = (255, 255, 0) if i == self.selected_theme_index else (200, 200, 200)
                 theme_text = font_comics.render(theme, True, color)
-                rect = theme_text.get_rect(topleft=(right_x, rect_y + 50 + i * 50))
-                self.screen.blit(theme_text, rect)
-                self.theme_rects.append(rect)
+                theme_rect = theme_text.get_rect(center=(center_x, base_y + i * 50))
+                self.screen.blit(theme_text, theme_rect)
+                self.theme_rects.append(theme_rect)
 
     def choose_theme(self, index):
         self.current_theme = self.themes[index]
@@ -443,7 +455,7 @@ class Game:
         # Fundo de título
         pygame.draw.rect(self.screen, (20, 20, 60), (80, 40, 800, 60), border_radius=10)
         title_font = pygame.font.SysFont("comicsansms", 42, bold=True)
-        title_text = "Por favor, escolha uma letra"
+        title_text = "Role a sorte: escolha sua letra"
         title_surface = title_font.render(title_text, True, (255, 255, 255))
         title_rect = title_surface.get_rect(center=(config.SCREEN_WIDTH // 2, 70))
         self.screen.blit(title_surface, title_rect)
@@ -467,24 +479,95 @@ class Game:
             self.screen.blit(letter_surface, rect)
             self.letter_rects.append((letter, rect))
 
-        # Timer, se a letra já foi escolhida
         if self.letter_chosen:
-            time_text = self.font.render(
-                f"⏰ Tempo restante: {int(self.remaining_time)}s", True, (255, 100, 100)
-            )
-            self.screen.blit(time_text, (100, 450))
+            screen_center_x = config.SCREEN_WIDTH // 2
+            screen_height = config.SCREEN_HEIGHT
+
+            # Mensagem de destaque (mais abaixo)
+            msg_font = pygame.font.SysFont("comicsansms", 36)
+            msg_text = msg_font.render("Letra sorteada!", True, (255, 255, 255))
+            msg_rect = msg_text.get_rect(center=(screen_center_x, screen_height - 260))
+            self.screen.blit(msg_text, msg_rect)
+
+            # Letra escolhida grande no centro inferior
+            big_font = pygame.font.SysFont("comicsansms", 100, bold=True)
+            letter_text = big_font.render(self.letter_chosen, True, (255, 255, 0))
+            letter_rect = letter_text.get_rect(center=(screen_center_x, screen_height - 170))
+            self.screen.blit(letter_text, letter_rect)
+
+            # Tema atual abaixo da letra
+            theme_font = pygame.font.SysFont("comicsansms", 30, bold=True)
+            theme_text = theme_font.render(f"Tópico da Rodada: {self.current_theme}", True, (255, 255, 255))
+            theme_rect = theme_text.get_rect(center=(screen_center_x, screen_height - 70))
+            self.screen.blit(theme_text, theme_rect)
 
     def draw_answer_input(self):
-        title = self.font.render(
-            f"{self.players[self.current_player_turn]['name']}, digite uma palavra com '{self.current_letter}':",
-            True,
-            (255, 255, 255)
-        )
-        self.screen.blit(title, (100, 50))
+        screen_center_x = config.SCREEN_WIDTH // 2
+        screen_height = config.SCREEN_HEIGHT
+        font_comics = pygame.font.SysFont("comicsansms", 32)
 
+        # Tema atual com fundo amarelo destacado
+        theme_font = pygame.font.SysFont("comicsansms", 30, bold=True)
+        theme_text = theme_font.render(f"Tópico da Rodada: {self.current_theme}", True, (255, 255, 255))  # branco
+
+        padding_x, padding_y = 20, 10
+        box_width = theme_text.get_width() + padding_x * 2
+        box_height = theme_text.get_height() + padding_y * 2
+        box_x = (config.SCREEN_WIDTH - box_width) // 2
+        box_y = 30
+        theme_box_rect = pygame.Rect(box_x, box_y, box_width, box_height)
+
+        pygame.draw.rect(self.screen, (20, 20, 60), theme_box_rect, border_radius=12)
+        self.screen.blit(theme_text, (box_x + padding_x, box_y + padding_y))
+
+        # Espaçamento após o tema
+        y_offset = box_y + box_height + 60
+
+        # Frase principal estilizada (nome + letra) — maior, amarela, centralizada mais para baixo
+        title_font = pygame.font.SysFont("comicsansms", 40, bold=True)
+        title_text = f"{self.players[self.current_player_turn]['name']}, a palavra da vez é com"
+        title_surface = title_font.render(title_text, True, (255, 255, 0))  # amarelo
+        title_rect = title_surface.get_rect(center=(screen_center_x, y_offset))
+        self.screen.blit(title_surface, title_rect)
+
+        # Letra destacada logo abaixo, grande e amarela (igual a parte da letra sorteada)
+        big_font = pygame.font.SysFont("comicsansms", 100, bold=True)
+        letter_surface = big_font.render(self.current_letter, True, (255, 255, 0))
+        letter_rect = letter_surface.get_rect(center=(screen_center_x, y_offset + 80))
+        self.screen.blit(letter_surface, letter_rect)
+
+        # Caixa para input (com borda e fundo escuro)
+        input_box_width = 600
+        input_box_height = 50
+        input_box_x = (config.SCREEN_WIDTH - input_box_width) // 2
+        input_box_y = y_offset + 180
+
+        input_box_rect = pygame.Rect(input_box_x, input_box_y, input_box_width, input_box_height)
+        pygame.draw.rect(self.screen, (30, 30, 30), input_box_rect, border_radius=8)  # fundo escuro
+        pygame.draw.rect(self.screen, (255, 255, 0), input_box_rect, 3, border_radius=8)  # borda amarela
+
+        # Texto dentro da caixa (resposta atual)
         answer_surface = self.font.render(self.current_answer, True, (255, 255, 0))
-        self.screen.blit(answer_surface, (100, 150))
+        answer_pos = (input_box_x + 10, input_box_y + (input_box_height - answer_surface.get_height()) // 2)
+        self.screen.blit(answer_surface, answer_pos)
 
-        timer_surface = self.font.render(f"Tempo restante: {int(self.remaining_time)}s", True, (255, 100, 100))
-        self.screen.blit(timer_surface, (100, 220))
+        # Cursor piscante (barra vertical)
+        # Calcula a posição do cursor após o texto
+        cursor_x = answer_pos[0] + answer_surface.get_width() + 2
+        cursor_y_top = answer_pos[1]
+        cursor_y_bottom = answer_pos[1] + answer_surface.get_height()
+
+        # Pisca a cada meio segundo
+        if (time.time() * 2) % 2 > 1:
+            pygame.draw.line(self.screen, (255, 255, 0), (cursor_x, cursor_y_top), (cursor_x, cursor_y_bottom), 3)
+
+        # Espaçamento para o timer
+        timer_y = input_box_y + input_box_height + 200
+        timer_surface = self.font.render(f"Contagem Regressiva: {int(self.remaining_time)}s", True, (255, 100, 100))
+        timer_rect = timer_surface.get_rect(center=(screen_center_x, timer_y))
+        self.screen.blit(timer_surface, timer_rect)
+
+
+
+
 
