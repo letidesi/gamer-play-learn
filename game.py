@@ -2,7 +2,6 @@ import pygame
 import time
 import config
 
-
 class Game:
     def __init__(self):
         self.screen = pygame.display.set_mode(
@@ -21,6 +20,16 @@ class Game:
 
         self.channel = pygame.mixer.Channel(0)
         self.channel.set_endevent(pygame.USEREVENT + 1)
+        self.player_count = 0
+        self.state = "select_player_count"  # novo estado inicial
+        self.letter_rects = []
+
+        self.themes = ["Lugar", "Objeto", "Animal", "Comida", "Profissão", "+ Novo Tema"]
+        self.selected_theme_index = 0
+        self.current_theme = None
+        self.theme_rects = []
+        self.custom_theme_input = ""
+        self.typing_custom_theme = False
 
         pygame.display.set_caption("Jogo da Roda de Letras")
 
@@ -46,8 +55,6 @@ class Game:
         self.used_letters = set()
         self.alphabet = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
         self.current_letter_index = 0
-
-        self.state = "get_names"
         self.current_player_turn = 0
         self.letter_chosen = None
         self.current_letter = None
@@ -61,10 +68,14 @@ class Game:
             self.screen.blit(self.background, (0, 0))
             self.handle_events()
 
+            if self.state == "select_player_count":
+                self.draw_select_player_count()
             if self.state == "get_names":
                 self.draw_name_input()
             elif self.state == "choose_character":
                 self.draw_character_selection()
+            elif self.state == "select_theme":
+                self.draw_theme_selection()
             elif self.state == "roulette":
                 self.draw_roulette()
                 self.update_timer()
@@ -87,6 +98,15 @@ class Game:
 
             elif event.type == pygame.QUIT:
                 self.running = False
+
+            elif self.state == "select_player_count":
+                if event.type == pygame.KEYDOWN:
+                    if event.key in [pygame.K_2, pygame.K_3, pygame.K_4]:
+                        self.max_players = int(event.unicode)
+                        self.input_boxes = ["" for _ in range(self.max_players)]
+                        self.scores = [0] * self.max_players
+                        self.player_count = self.max_players
+                        self.state = "get_names"
 
             elif self.state == "get_names":
                 if event.type == pygame.KEYDOWN:
@@ -116,7 +136,7 @@ class Game:
                         self.players[self.current_input]["character"] = self.character_images[self.selected_character_index]
                         self.current_input += 1
                         if self.current_input == self.max_players:
-                            self.state = "roulette"
+                            self.state = "select_theme"
                             self.current_player_turn = 0
                             self.letter_chosen = None
                             self.timer_start = None
@@ -125,23 +145,66 @@ class Game:
                         else:
                             self.selected_character_index = 0
 
+            elif self.state == "select_theme":
+                if self.typing_custom_theme:
+                    if event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_RETURN:
+                            if self.custom_theme_input.strip():
+                                self.current_theme = self.custom_theme_input.strip()
+                                self.typing_custom_theme = False
+                                self.custom_theme_input = ""
+                                self.state = "roulette"
+                                self.letter_chosen = None
+                                self.timer_start = None
+                                self.remaining_time = 40
+                                self.warning_played = False
+                        elif event.key == pygame.K_BACKSPACE:
+                            self.custom_theme_input = self.custom_theme_input[:-1]
+                        else:
+                            self.custom_theme_input += event.unicode
+                else:
+                    if event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_UP:
+                            self.selected_theme_index = (self.selected_theme_index - 1) % len(self.themes)
+                        elif event.key == pygame.K_DOWN:
+                            self.selected_theme_index = (self.selected_theme_index + 1) % len(self.themes)
+                        elif event.key == pygame.K_RETURN:
+                            if self.themes[self.selected_theme_index] == "+ Novo Tema":
+                                self.typing_custom_theme = True
+                                self.custom_theme_input = ""
+                            else:
+                                self.choose_theme(self.selected_theme_index)
+
+                    elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        mouse_pos = event.pos
+                        for i, rect in enumerate(self.theme_rects):
+                            if rect.collidepoint(mouse_pos):
+                                if self.themes[i] == "+ Novo Tema":
+                                    self.typing_custom_theme = True
+                                    self.custom_theme_input = ""
+                                else:
+                                    self.choose_theme(i)
+                                break
+
             elif self.state == "roulette":
-                if not self.letter_chosen and event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_LEFT:
-                        self.move_letter_index(-1)
-                    elif event.key == pygame.K_RIGHT:
-                        self.move_letter_index(1)
-                    elif event.key == pygame.K_RETURN:
-                        chosen_letter = self.alphabet[self.current_letter_index]
-                        if chosen_letter not in self.used_letters:
-                            self.letter_chosen = chosen_letter
-                            self.used_letters.add(chosen_letter)
-                            self.current_letter = chosen_letter
-                            self.current_answer = ""
-                            self.timer_start = time.time()
-                            self.state = "answer_input"
-                            self.warning_played = False
-                            self.play_choice_sound()
+                if not self.letter_chosen:
+                    if event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_LEFT:
+                            self.move_letter_index(-1)
+                        elif event.key == pygame.K_RIGHT:
+                            self.move_letter_index(1)
+                        elif event.key == pygame.K_RETURN:
+                            self.select_letter(self.alphabet[self.current_letter_index])
+                        elif event.unicode.upper() in self.alphabet:
+                            self.select_letter(event.unicode.upper())
+
+                    elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        mouse_pos = event.pos
+                        for i, (letter, rect) in enumerate(self.letter_rects):
+                            if rect.collidepoint(mouse_pos):
+                                self.current_letter_index = self.alphabet.index(letter)
+                                self.select_letter(letter)
+                                break
 
             elif self.state == "answer_input":
                 if event.type == pygame.KEYDOWN:
@@ -175,6 +238,17 @@ class Game:
     def play_choice_sound(self):
         self.channel.play(self.choice_letter)
 
+    def select_letter(self, letter):
+        if letter not in self.used_letters:
+            self.letter_chosen = letter
+            self.used_letters.add(letter)
+            self.current_letter = letter
+            self.current_answer = ""
+            self.timer_start = time.time()
+            self.state = "answer_input"
+            self.warning_played = False
+            self.play_choice_sound()
+
     def process_answer(self):
         if self.current_answer.strip():
             self.scores[self.current_player_turn] += 1
@@ -189,13 +263,26 @@ class Game:
         self.warning_played = False
         self.state = "roulette"
 
+    def draw_select_player_count(self):
+        title_font = pygame.font.SysFont("comicsansms", 42, bold=True)
+        title = title_font.render("Quantos players no squad?", True, (255, 255, 255))
+        title_rect = title.get_rect(center=(config.SCREEN_WIDTH // 2, 150))
+        self.screen.blit(title, title_rect)
+
+        instruction_font = pygame.font.SysFont("comicsansms", 28, bold=True)
+        instruction = instruction_font.render("Pressione [2], [3] ou [4] para definir os participantes.",
+                                              True, (200, 200, 0))
+        instruction_rect = instruction.get_rect(center=(config.SCREEN_WIDTH // 2, 250))
+        self.screen.blit(instruction, instruction_rect)
+
     def draw_name_input(self):
-        title_font = pygame.font.SysFont("arial", 40, bold=True)
-        game_title = title_font.render("🎡 Roda das Letras 🎡", True, (255, 255, 255))
+        title_font = pygame.font.SysFont("comicsansms", 40, bold=True)
+        game_title = title_font.render("Roda das Letras", True, (255, 255, 255))
         game_title_rect = game_title.get_rect(center=(config.SCREEN_WIDTH // 2, 80))
         self.screen.blit(game_title, game_title_rect)
 
-        prompt_text = self.font.render(
+        prompt_font = pygame.font.SysFont("comicsansms", 28, bold=True)
+        prompt_text = prompt_font.render(
             f"{self.current_input + 1}º Jogador, digite seu nome:", True, (255, 255, 255)
         )
         prompt_rect = prompt_text.get_rect(center=(config.SCREEN_WIDTH // 2, 180))
@@ -223,43 +310,169 @@ class Game:
             y += 30
 
     def draw_character_selection(self):
-        title = self.font.render(
-            f"Jogador {self.current_input + 1}, escolha seu personagem:", True, (255, 255, 255)
-        )
-        self.screen.blit(title, (100, 50))
+        rect_x, rect_y, rect_w, rect_h = 80, 40, 800, 60
+        pygame.draw.rect(self.screen, (20, 20, 60), (rect_x, rect_y, rect_w, rect_h), border_radius=10)
 
-        for i, img in enumerate(self.character_images):
-            x = 100 + i * 100
-            y = 150
+        title_font = pygame.font.SysFont("comicsansms", 42, bold=True)
+        player_name = self.players[self.current_input]["name"]
+        title_text = f"{player_name}, escolha seu personagem"
+        title_surface = title_font.render(title_text, True, (255, 255, 255))
+
+        title_rect = title_surface.get_rect()
+        title_rect.centery = rect_y + rect_h // 2
+        title_rect.x = rect_x + 20
+
+        self.screen.blit(title_surface, title_rect)
+
+        font_comics = pygame.font.SysFont("comicsansms", 28)
+
+        spacing_x = 150
+        total_width = self.max_players * spacing_x
+        start_x = (config.SCREEN_WIDTH - total_width) // 2
+
+        y_img = 150
+
+        # 1. Desenha as imagens centralizadas horizontalmente
+        for i, img in enumerate(self.character_images[:self.max_players]):
+            x = start_x + i * spacing_x
+
+            # retângulo amarelo para seleção
             if i == self.selected_character_index:
-                pygame.draw.rect(self.screen, (255, 255, 0), (x - 5, y - 5, 74, 74), 3)
-            self.screen.blit(img, (x, y))
+                pygame.draw.rect(self.screen, (255, 255, 0), (x - 5, y_img - 5, 74, 74), 3)
 
-        y = 250
-        for idx, player in enumerate(self.players):
-            text_str = f"Jogador {idx + 1}: {player['name']}"
-            if player["character"] is not None:
+            self.screen.blit(img, (x, y_img))
+
+        # 2. Define posição do texto como coluna vertical abaixo das imagens, centralizada na tela
+        y_text_start = y_img + 100  # distância vertical para começar a lista de nomes
+        text_x_center = config.SCREEN_WIDTH // 2  # centro horizontal da tela
+
+        for i in range(len(self.players)):
+            player_name = self.players[i]["name"]
+            text_str = f"Jogador {i + 1}: {player_name}"
+            if self.players[i]["character"] is not None:
                 text_str += " ✔"
-            text = self.font.render(text_str, True, (180, 180, 180))
-            self.screen.blit(text, (50, y))
-            y += 30
+
+            text_surface = font_comics.render(text_str, True, (180, 180, 180))
+
+            # Posição Y para cada texto (espacamento 35px)
+            y_text = y_text_start + i * 35
+
+            # Centraliza o texto na tela
+            text_rect = text_surface.get_rect(center=(text_x_center, y_text))
+            self.screen.blit(text_surface, text_rect)
+
+    def draw_theme_selection(self):
+        # Configura a fonte Comic Sans MS, tamanho 28
+        font_comics = pygame.font.SysFont("comicsansms", 28)
+
+        # Dimensões e posição do painel no canto superior esquerdo
+        rect_x, rect_y = 20, 20
+        rect_w, rect_h = 300, 220
+        panel_color = (20, 20, 60)
+
+        # Desenha retângulo arredondado como fundo do painel
+        pygame.draw.rect(self.screen, panel_color, (rect_x, rect_y, rect_w, rect_h), border_radius=10)
+
+        # Pega jogador atual e imagem do personagem selecionado
+        player = self.players[self.current_player_turn]
+        player_img = player["character"]  # já é a Surface, sem indexar
+
+        # Ajusta tamanho da imagem (se quiser)
+        img_size = 64
+        img_scaled = pygame.transform.scale(player_img, (img_size, img_size))
+
+        # Centraliza imagem horizontalmente dentro do painel
+        img_x = rect_x + (rect_w - img_size) // 2
+        img_y = rect_y + 20
+
+        self.screen.blit(img_scaled, (img_x, img_y))
+
+        # Escreve nome do jogador abaixo da imagem, centralizado
+        name_text = font_comics.render(player["name"], True, (255, 255, 255))
+        name_rect = name_text.get_rect(center=(rect_x + rect_w // 2, img_y + img_size + 25))
+        self.screen.blit(name_text, name_rect)
+
+        # Texto "escolha ou digite um tema" abaixo do nome, centralizado dentro do painel, com margem lateral
+        margin_x = 10  # margem para não encostar nas bordas
+        choose_text = font_comics.render("Escolha ou digite um tema:", True, (255, 255, 255))
+        choose_rect = choose_text.get_rect()
+        choose_rect.centerx = rect_x + rect_w // 2
+        choose_rect.top = name_rect.bottom + 25
+
+        # Ajusta se o texto ultrapassar as bordas do painel
+        if choose_rect.left < rect_x + margin_x:
+            choose_rect.left = rect_x + margin_x
+        if choose_rect.right > rect_x + rect_w - margin_x:
+            choose_rect.right = rect_x + rect_w - margin_x
+
+        self.screen.blit(choose_text, choose_rect)
+
+        # Agora desenha a lista de temas ou input do lado direito do painel
+        right_x = rect_x + rect_w + 40  # espaçamento entre painel e lista
+        if self.typing_custom_theme:
+            # Input para digitar novo tema
+            input_prompt = font_comics.render("Digite o novo tema e pressione Enter:", True, (255, 255, 0))
+            self.screen.blit(input_prompt, (right_x, rect_y + 50))
+
+            input_text = font_comics.render(self.custom_theme_input, True, (255, 255, 255))
+            input_rect = pygame.Rect(right_x, rect_y + 100, 400, 40)
+            pygame.draw.rect(self.screen, (50, 50, 50), input_rect)
+            pygame.draw.rect(self.screen, (255, 255, 0), input_rect, 2)
+            self.screen.blit(input_text, (input_rect.x + 10, input_rect.y + 5))
+        else:
+            # Lista de temas para selecionar
+            self.theme_rects = []
+            for i, theme in enumerate(self.themes):
+                color = (255, 255, 0) if i == self.selected_theme_index else (200, 200, 200)
+                theme_text = font_comics.render(theme, True, color)
+                rect = theme_text.get_rect(topleft=(right_x, rect_y + 50 + i * 50))
+                self.screen.blit(theme_text, rect)
+                self.theme_rects.append(rect)
+
+    def choose_theme(self, index):
+        self.current_theme = self.themes[index]
+        self.state = "roulette"
+        self.letter_chosen = None
+        self.timer_start = None
+        self.remaining_time = 40
+        self.warning_played = False
 
     def draw_roulette(self):
-        title = self.font.render(
-            f"{self.players[self.current_player_turn]['name']}, escolha uma letra:", True, (255, 255, 255)
-        )
-        self.screen.blit(title, (100, 50))
+        self.letter_rects = []
 
+        # Fundo de título
+        pygame.draw.rect(self.screen, (20, 20, 60), (80, 40, 800, 60), border_radius=10)
+        title_font = pygame.font.SysFont("comicsansms", 42, bold=True)
+        title_text = "Por favor, escolha uma letra"
+        title_surface = title_font.render(title_text, True, (255, 255, 255))
+        title_rect = title_surface.get_rect(center=(config.SCREEN_WIDTH // 2, 70))
+        self.screen.blit(title_surface, title_rect)
+
+        # Imagem do personagem no canto superior direito
+        character_img = self.players[self.current_player_turn]["character"]
+        if character_img:
+            img_rect = character_img.get_rect(topright=(config.SCREEN_WIDTH - 30, 30))
+            self.screen.blit(character_img, img_rect)
+
+            # Nome do jogador abaixo da imagem
+            name_surface = self.font.render(self.players[self.current_player_turn]["name"], True, (255, 255, 0))
+            name_rect = name_surface.get_rect(topright=(config.SCREEN_WIDTH - 40, img_rect.bottom + 10))
+            self.screen.blit(name_surface, name_rect)
+
+        # Letras da roleta
         for i, letter in enumerate(self.alphabet):
             color = (255, 255, 0) if i == self.current_letter_index else (200, 200, 200)
             letter_surface = self.font.render(letter, True, color)
-            self.screen.blit(letter_surface, (50 + (i % 13) * 70, 150 + (i // 13) * 70))
+            rect = letter_surface.get_rect(topleft=(50 + (i % 13) * 70, 200 + (i // 13) * 70))
+            self.screen.blit(letter_surface, rect)
+            self.letter_rects.append((letter, rect))
 
+        # Timer, se a letra já foi escolhida
         if self.letter_chosen:
             time_text = self.font.render(
-                f"Tempo restante: {int(self.remaining_time)}s", True, (255, 100, 100)
+                f"⏰ Tempo restante: {int(self.remaining_time)}s", True, (255, 100, 100)
             )
-            self.screen.blit(time_text, (100, 350))
+            self.screen.blit(time_text, (100, 450))
 
     def draw_answer_input(self):
         title = self.font.render(
