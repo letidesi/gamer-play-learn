@@ -1,6 +1,8 @@
 import pygame
 import time
 import config
+from api.word_validation import validate_word
+from api.validation_string import validation_name
 
 class Game:
     def __init__(self):
@@ -21,7 +23,23 @@ class Game:
         self.channel = pygame.mixer.Channel(0)
         self.channel.set_endevent(pygame.USEREVENT + 1)
         self.player_count = 0
-        self.state = "select_player_count"  # novo estado inicial
+        self.state = "select_player_count"  # já tem
+
+        # Para votação:
+        self.voting_word = None  # palavra a ser votada
+        self.votes = []  # lista dos votos (True=sim, False=não)
+        self.vote_required = 0  # quantos votos precisam
+        self.current_voter = 0  # índice do jogador votando
+        self.vote_result = None  # resultado final (True/False)
+        self.vote_time_limit = 30  # segundos para votar (opcional)
+        self.vote_start_time = None  # hora que começou votação
+
+        self.error_message = ""
+        self.error_message_time = 0
+        self.error_message_duration = 3000  # 3 segundos
+        self.error_alpha = 255  # opacidade inicial (0 transparente, 255 opaco)
+        self.error_alpha_direction = -5  # direção do fade (diminuindo)
+
         self.letter_rects = []
 
         self.themes = ["Lugar", "Objeto", "Animal", "Comida", "Profissão", "+ Criar nova categoria para a próxima rodada"]
@@ -89,7 +107,8 @@ class Game:
                 self.update_timer()
             elif self.state == "gameplay":
                 self.process_answer()
-                self.next_turn()
+            elif self.state == "voting":
+                self.draw_voting()
 
             pygame.display.flip()
             self.clock.tick(60)
@@ -103,6 +122,27 @@ class Game:
 
             elif event.type == pygame.QUIT:
                 self.running = False
+            elif hasattr(self, 'typing_custom_theme') and self.typing_custom_theme:
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN:
+                        theme = self.custom_theme_input.strip()
+                        if validation_name(theme):
+                            self.typing_custom_theme = False
+                            self.current_theme = theme
+                            self.error_message = ""
+                            # opcional: mudar estado, ex:
+                            self.state = "roulette"
+                        else:
+                            self.error_message = "Tema inválido! Use letras, acentos, espaços e hífen."
+                            self.error_message_time = pygame.time.get_ticks() + self.error_message_duration
+                            self.error_alpha = 255
+                            self.error_alpha_direction = -5
+
+                    elif event.key == pygame.K_BACKSPACE:
+                        self.custom_theme_input = self.custom_theme_input[:-1]
+
+                    elif event.unicode.isprintable():
+                        self.custom_theme_input += event.unicode
 
             elif self.state == "select_player_count":
                 if event.type == pygame.KEYDOWN:
@@ -116,21 +156,26 @@ class Game:
             elif self.state == "get_names":
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_RETURN and self.input_boxes[self.current_input] != "":
-                        self.players.append({
-                            "name": self.input_boxes[self.current_input],
-                            "character": None,
-                        })
-                        self.current_input += 1
-                        if self.current_input == self.max_players:
-                            self.current_input = 0
-                            self.state = "choose_character"
+                        name = self.input_boxes[self.current_input].strip()
+                        if validation_name(name):
+                            self.players.append({
+                                "name": name,
+                                "character": None,
+                            })
+                            self.current_input += 1
+
+                            if self.current_input == self.max_players:
+                                self.current_input = 0
+                                self.state = "choose_character"
+                        else:
+                            self.error_message = "Nome inválido! Use letras e acentos, sem símbolos proibidos."
+                            self.error_message_time = pygame.time.get_ticks() + self.error_message_duration
+                            self.error_alpha = 255
+                            self.error_alpha_direction = -5
                     elif event.key == pygame.K_BACKSPACE:
-                        self.input_boxes[self.current_input] = (
-                            self.input_boxes[self.current_input][:-1]
-                        )
+                        self.input_boxes[self.current_input] = self.input_boxes[self.current_input][:-1]
                     elif len(self.input_boxes[self.current_input]) < 6 and event.unicode.isprintable():
                         self.input_boxes[self.current_input] += event.unicode
-
 
             elif self.state == "choose_character":
                 if event.type == pygame.KEYDOWN:
@@ -155,25 +200,37 @@ class Game:
                 if self.typing_custom_theme:
                     if event.type == pygame.KEYDOWN:
                         if event.key == pygame.K_RETURN:
-                            if self.custom_theme_input.strip():
-                                self.current_theme = self.custom_theme_input.strip()
+                            tema = self.custom_theme_input.strip()
+                            if validation_name(tema):  # ou validation_text
+                                self.current_theme = tema
                                 self.typing_custom_theme = False
                                 self.custom_theme_input = ""
-                                self.state = "roulette"
+                                self.state = "roulette"  # AGORA sim muda pra roleta
                                 self.letter_chosen = None
                                 self.timer_start = None
                                 self.remaining_time = 40
                                 self.warning_played = False
+                                self.error_message = ""
+                            else:
+                                self.error_message = "Tema inválido! Use letras, acentos, espaços e hífen."
+                                self.error_message_time = pygame.time.get_ticks() + self.error_message_duration
+                                self.error_alpha = 255
+                                self.error_alpha_direction = -5
+
                         elif event.key == pygame.K_BACKSPACE:
                             self.custom_theme_input = self.custom_theme_input[:-1]
-                        else:
+
+                        elif hasattr(event, "unicode") and event.unicode.isprintable():
                             self.custom_theme_input += event.unicode
+
                 else:
                     if event.type == pygame.KEYDOWN:
                         if event.key == pygame.K_UP:
                             self.selected_theme_index = (self.selected_theme_index - 1) % len(self.themes)
+
                         elif event.key == pygame.K_DOWN:
                             self.selected_theme_index = (self.selected_theme_index + 1) % len(self.themes)
+
                         elif event.key == pygame.K_RETURN:
                             if self.themes[self.selected_theme_index] == "+ Criar nova categoria para a próxima rodada":
                                 self.typing_custom_theme = True
@@ -217,15 +274,53 @@ class Game:
                     self.timer_start = time.time()
                     self.state = "answer_input"
 
+
             elif self.state == "answer_input":
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_BACKSPACE:
                         self.current_answer = self.current_answer[:-1]
                     elif event.key == pygame.K_RETURN:
-                        self.timer_start = None
-                        self.state = "gameplay"
-                    elif event.unicode.isalpha():
+                        is_valid = validate_word(self.current_answer.strip())
+                        if is_valid is True:
+                            self.timer_start = None
+                            self.state = "gameplay"
+                        elif is_valid is False:
+                            print("Palavra inválida!")
+                        else:
+                            print("Não foi possível validar. Iniciando votação offline...")
+                    elif hasattr(event, 'unicode') and event.unicode.isalpha():
                         self.current_answer += event.unicode.upper()
+
+            elif self.state == "voting":
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_s:
+                        self.votes.append(True)
+                        self.current_voter += 1
+                    elif event.key == pygame.K_n:
+                        self.votes.append(False)
+                        self.current_voter += 1
+
+                    if self.current_voter >= self.vote_required:
+                        self.finish_voting()
+
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    mouse_pos = event.pos
+                    if self.sim_button_rect.collidepoint(mouse_pos):
+                        # Efeito visual aqui (pode ser uma função que pisca o botão)
+                        self.votes.append(True)
+                        self.current_voter += 1
+                        if self.current_voter >= self.vote_required:
+                            self.finish_voting()
+
+                    elif self.nao_button_rect.collidepoint(mouse_pos):
+                        self.votes.append(False)
+                        self.current_voter += 1
+                    elif hasattr(event, "unicode") and event.unicode.isalpha():
+                        self.current_answer += event.unicode.upper()
+
+                    if self.current_voter >= self.vote_required:
+                        self.finish_voting()
+
 
     def move_letter_index(self, direction):
         self.current_letter_index = (self.current_letter_index + direction) % len(self.alphabet)
@@ -263,7 +358,55 @@ class Game:
 
     def process_answer(self):
         if self.current_answer.strip():
-            self.scores[self.current_player_turn] += 1
+            word = self.current_answer.strip().lower()
+
+            # Valida palavra no dicionário
+            is_valid = validate_word(word)
+            if is_valid is None:
+                print("Não foi possível validar. Iniciando votação offline...")
+                self.start_voting(word)
+                return
+
+            if not is_valid:
+                # Palavra inválida no dicionário, perde pontos e passa a vez
+                self.scores[self.current_player_turn] -= 10
+                print(
+                    f"Palavra '{word}' inválida! Jogador {self.players[self.current_player_turn]['name']} perde 10 pontos.")
+                self.next_turn()
+                return
+
+            # Palavra válida, inicia votação para validar tema
+        self.start_voting(word)
+
+    def finish_voting(self):
+        # Se a maioria aprovou
+        approved = sum(self.votes) > (self.vote_required / 2)
+        player_name = self.players[self.current_player_turn]['name']
+        word = self.voting_word
+
+        if approved:
+            self.scores[self.current_player_turn] += 10
+            print(f"Palavra '{word}' aprovada pelos jogadores! +10 pontos para {player_name}")
+
+            # Jogador pode escolher próxima letra sem perder a vez
+            self.letter_chosen = None
+            self.current_letter = None
+            self.current_answer = ""
+            self.timer_start = None
+            self.remaining_time = 40
+            self.warning_played = False
+            self.state = "roulette"
+        else:
+            print(f"Palavra '{word}' rejeitada pelos jogadores! Vez passa para o próximo jogador.")
+            self.scores[self.current_player_turn] -= 10
+            self.next_turn()
+
+        self.voting_word = None
+        self.votes = []
+        self.vote_required = 0
+        self.current_voter = 0
+        self.vote_result = None
+        self.vote_start_time = None
 
     def next_turn(self):
         self.current_player_turn = (self.current_player_turn + 1) % self.max_players
@@ -320,6 +463,20 @@ class Game:
             player_text = self.font.render(f"{idx + 1}. {player['name']}", True, (180, 180, 180))
             self.screen.blit(player_text, (70, y))
             y += 30
+
+        current_time = pygame.time.get_ticks()
+        if self.error_message and current_time < self.error_message_time:
+            self.error_alpha += self.error_alpha_direction
+            if self.error_alpha <= 50 or self.error_alpha >= 255:
+                self.error_alpha_direction *= -1
+                self.error_alpha = max(50, min(255, self.error_alpha))
+
+            font = pygame.font.SysFont("comicsansms", 28, bold=True)
+            text_surface = font.render(self.error_message, True, (255, 50, 50))
+            text_surface.set_alpha(self.error_alpha)
+
+            text_rect = text_surface.get_rect(center=(config.SCREEN_WIDTH // 2, 300))
+            self.screen.blit(text_surface, text_rect)
 
     def draw_character_selection(self):
         rect_x, rect_y, rect_w, rect_h = 80, 40, 800, 60
@@ -441,6 +598,20 @@ class Game:
                 self.screen.blit(theme_text, theme_rect)
                 self.theme_rects.append(theme_rect)
 
+        current_time = pygame.time.get_ticks()
+        if self.error_message and current_time < self.error_message_time:
+            self.error_alpha += self.error_alpha_direction
+            if self.error_alpha <= 50 or self.error_alpha >= 255:
+                self.error_alpha_direction *= -1
+                self.error_alpha = max(50, min(255, self.error_alpha))
+
+            font = pygame.font.SysFont("comicsansms", 28, bold=True)
+            text_surface = font.render(self.error_message, True, (255, 50, 50))
+            text_surface.set_alpha(self.error_alpha)
+
+            text_rect = text_surface.get_rect(center=(center_x, base_y + 130))
+            self.screen.blit(text_surface, text_rect)
+
     def choose_theme(self, index):
         self.current_theme = self.themes[index]
         self.state = "roulette"
@@ -451,6 +622,18 @@ class Game:
 
     def draw_roulette(self):
         self.letter_rects = []
+
+        # Exibe pontuação de todos os jogadores no topo esquerdo
+        font_scores = pygame.font.SysFont("comicsansms", 24)
+        x_start = 30
+        y_start = 130
+        spacing_y = 30
+
+        for i, player in enumerate(self.players):
+            score_text = f"{player['name']}: {self.scores[i]} pts"
+            color = (255, 255, 0) if i == self.current_player_turn else (200, 200, 200)
+            score_surface = font_scores.render(score_text, True, color)
+            self.screen.blit(score_surface, (x_start, y_start + i * spacing_y))
 
         # Fundo de título
         pygame.draw.rect(self.screen, (20, 20, 60), (80, 40, 800, 60), border_radius=10)
@@ -475,7 +658,7 @@ class Game:
         for i, letter in enumerate(self.alphabet):
             color = (255, 255, 0) if i == self.current_letter_index else (200, 200, 200)
             letter_surface = self.font.render(letter, True, color)
-            rect = letter_surface.get_rect(topleft=(50 + (i % 13) * 70, 200 + (i // 13) * 70))
+            rect = letter_surface.get_rect(topleft=(50 + (i % 13) * 70, 300 + (i // 13) * 70))
             self.screen.blit(letter_surface, rect)
             self.letter_rects.append((letter, rect))
 
@@ -566,6 +749,73 @@ class Game:
         timer_surface = self.font.render(f"Contagem Regressiva: {int(self.remaining_time)}s", True, (255, 100, 100))
         timer_rect = timer_surface.get_rect(center=(screen_center_x, timer_y))
         self.screen.blit(timer_surface, timer_rect)
+
+    def start_voting(self, word):
+        self.voting_word = word
+        self.votes = []
+        self.vote_required = self.max_players - 1  # os outros jogadores votam
+        self.current_voter = 0
+        self.vote_result = None
+        self.vote_start_time = time.time()
+        self.state = "voting"
+
+    def draw_voting(self):
+        self.screen.fill((0, 0, 0))  # fundo escuro
+
+        font = pygame.font.SysFont("comicsansms", 36)
+        word_text = font.render(f"A palavra foi: {self.voting_word}", True, (255, 255, 255))
+        word_rect = word_text.get_rect(center=(config.SCREEN_WIDTH // 2, 200))
+        self.screen.blit(word_text, word_rect)
+
+        prompt_font = pygame.font.SysFont("comicsansms", 28)
+        voter_idx = (self.current_player_turn + self.current_voter + 1) % self.max_players
+        voter_name = self.players[voter_idx]["name"]
+        prompt_text = prompt_font.render(f"{voter_name}, essa palavra é válida? [S/N]", True, (255, 255, 0))
+        prompt_rect = prompt_text.get_rect(center=(config.SCREEN_WIDTH // 2, 300))
+        self.screen.blit(prompt_text, prompt_rect)
+
+        votes_text = prompt_font.render(f"Votos: {len(self.votes)} / {self.vote_required}", True, (200, 200, 200))
+        votes_rect = votes_text.get_rect(center=(config.SCREEN_WIDTH // 2, 380))
+        self.screen.blit(votes_text, votes_rect)
+
+        # --- Botões Sim e Não ---
+        button_font = pygame.font.SysFont("comicsansms", 32, bold=True)
+
+        # Define posições e tamanhos
+        button_width, button_height = 120, 50
+        screen_center_x = config.SCREEN_WIDTH // 2
+        button_y = 450
+
+        self.sim_button_rect = pygame.Rect(screen_center_x - button_width - 20, button_y, button_width, button_height)
+        self.nao_button_rect = pygame.Rect(screen_center_x + 20, button_y, button_width, button_height)
+
+        # Cor padrão dos botões
+        sim_color = (0, 200, 0)
+        nao_color = (200, 0, 0)
+
+        # Se quiser, pode fazer efeito de hover (mouse passando por cima)
+        mouse_pos = pygame.mouse.get_pos()
+        if self.sim_button_rect.collidepoint(mouse_pos):
+            sim_color = (0, 255, 0)
+        if self.nao_button_rect.collidepoint(mouse_pos):
+            nao_color = (255, 0, 0)
+
+        # Desenha botões
+        pygame.draw.rect(self.screen, sim_color, self.sim_button_rect, border_radius=8)
+        pygame.draw.rect(self.screen, nao_color, self.nao_button_rect, border_radius=8)
+
+        # Texto dos botões
+        sim_text = button_font.render("SIM", True, (255, 255, 255))
+        nao_text = button_font.render("NÃO", True, (255, 255, 255))
+
+        sim_text_rect = sim_text.get_rect(center=self.sim_button_rect.center)
+        nao_text_rect = nao_text.get_rect(center=self.nao_button_rect.center)
+
+        self.screen.blit(sim_text, sim_text_rect)
+        self.screen.blit(nao_text, nao_text_rect)
+
+    def validate_word_online(self, word):
+        return validate_word(word)
 
 
 
