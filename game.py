@@ -196,6 +196,8 @@ class Game:
                         else:
                             self.selected_character_index = 0
 
+
+
             elif self.state == "select_theme":
                 if self.typing_custom_theme:
                     if event.type == pygame.KEYDOWN:
@@ -205,7 +207,7 @@ class Game:
                                 self.current_theme = tema
                                 self.typing_custom_theme = False
                                 self.custom_theme_input = ""
-                                self.state = "roulette"  # AGORA sim muda pra roleta
+                                self.state = "roulette"
                                 self.letter_chosen = None
                                 self.timer_start = None
                                 self.remaining_time = 40
@@ -216,6 +218,7 @@ class Game:
                                 self.error_message_time = pygame.time.get_ticks() + self.error_message_duration
                                 self.error_alpha = 255
                                 self.error_alpha_direction = -5
+
 
                         elif event.key == pygame.K_BACKSPACE:
                             self.custom_theme_input = self.custom_theme_input[:-1]
@@ -269,8 +272,8 @@ class Game:
                                 self.select_letter(letter)
                                 break
             elif self.state == "letter_reveal":
-                self.draw_roulette()  # mesmo desenho
-                if time.time() - self.reveal_start_time > 5:  # espera 5 segundos
+                self.draw_roulette()  #
+                if time.time() - self.reveal_start_time > 5:
                     self.timer_start = time.time()
                     self.state = "answer_input"
 
@@ -306,7 +309,6 @@ class Game:
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     mouse_pos = event.pos
                     if self.sim_button_rect.collidepoint(mouse_pos):
-                        # Efeito visual aqui (pode ser uma função que pisca o botão)
                         self.votes.append(True)
                         self.current_voter += 1
                         if self.current_voter >= self.vote_required:
@@ -315,6 +317,9 @@ class Game:
                     elif self.nao_button_rect.collidepoint(mouse_pos):
                         self.votes.append(False)
                         self.current_voter += 1
+                        if self.current_voter >= self.vote_required:
+                            self.finish_voting()
+
                     elif hasattr(event, "unicode") and event.unicode.isalpha():
                         self.current_answer += event.unicode.upper()
 
@@ -339,7 +344,7 @@ class Game:
 
     def play_warning_sound(self):
         self.channel.play(self.warning_sound)
-        self.play_next_after_warning = True  # sinaliza que o próximo som deve vir depois
+        self.play_next_after_warning = True
 
     def play_choice_sound(self):
         self.channel.play(self.choice_letter)
@@ -350,7 +355,7 @@ class Game:
             self.used_letters.add(letter)
             self.current_letter = letter
             self.current_answer = ""
-            self.reveal_start_time = time.time()  # ← ESSA LINHA ADICIONADA
+            self.reveal_start_time = time.time()
             self.timer_start = time.time()
             self.state = "letter_reveal"
             self.warning_played = False
@@ -376,7 +381,7 @@ class Game:
                 return
 
             # Palavra válida, inicia votação para validar tema
-        self.start_voting(word)
+            self.start_voting(word)
 
     def finish_voting(self):
         # Se a maioria aprovou
