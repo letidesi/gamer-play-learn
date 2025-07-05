@@ -3,6 +3,17 @@ import time
 import config
 from api.word_validation import validate_word
 from api.validation_string import validation_name
+from config import resource_path
+import os
+import sys
+
+def resource_path(relative_path):
+    """Retorna o caminho absoluto, lidando com PyInstaller."""
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 class Game:
     def __init__(self):
@@ -14,9 +25,10 @@ class Game:
             self.background, (config.SCREEN_WIDTH, config.SCREEN_HEIGHT)
         )
 
-        self.warning_sound = pygame.mixer.Sound("assets/warning.wav")
-        self.next_sound = pygame.mixer.Sound("assets/next_sound.wav")
-        self.choice_letter = pygame.mixer.Sound("assets/choice_letter.wav")
+
+        self.warning_sound = pygame.mixer.Sound(resource_path("assets/warning.wav"))
+        self.next_sound = pygame.mixer.Sound(resource_path("assets/next_sound.wav"))
+        self.choice_letter = pygame.mixer.Sound(resource_path("assets/choice_letter.wav"))
 
         self.play_next_after_warning = False
 
@@ -62,7 +74,7 @@ class Game:
 
         self.character_images = [
             pygame.transform.scale(
-                pygame.image.load(f"assets/char{i}.jpg").convert_alpha(),
+                pygame.image.load(resource_path(f"assets/char{i}.jpg")).convert_alpha(),
                 (64, 64)
             )
             for i in range(1, 5)

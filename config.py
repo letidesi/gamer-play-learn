@@ -1,4 +1,14 @@
 import os
+import os
+import sys
+
+def resource_path(relative_path):
+    """Usado para localizar arquivos corretamente, mesmo no PyInstaller."""
+    try:
+        base_path = sys._MEIPASS
+    except AttributeError:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 SCREEN_WIDTH = 1000
 SCREEN_HEIGHT = 700
@@ -28,7 +38,7 @@ PLAYER_IMAGE_FILES = [
     "assets/player4.png"
 ]
 
-ASSET_PATH = "assets"
+ASSET_PATH = os.path.join("assets")
 BACKGROUND_IMG = os.path.join(ASSET_PATH, "bg.png")
 
 
